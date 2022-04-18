@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 """
     Authors : Hadeer Farahat and Cayse Rogers
     Purpose : Project4 for SP22-CS424/525 class
 
 """
 
-""" from fileinput import filename
+from fileinput import filename
 import os
 from pyexpat import model
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -23,7 +24,7 @@ import glob
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 import sklearn.preprocessing as pp
-"""
+
 
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
@@ -31,6 +32,11 @@ import numpy as np
 
 import sys
 
+# Function for sampling output
+def sample(z, temperature):
+  z = np.array(z)**(1/temperature)
+  q = z/z.sum()
+  return np.argmax(np.random.multinomial(1, q, 1))
 
 def data_division (fname, wsize, stride):
     print("Method 1: creates the training data to perform back propagation through time.")
@@ -102,6 +108,12 @@ def data_division (fname, wsize, stride):
 
 def char_prediction (init_char, model, temp, n):
     print ("Method 2")
+    if model == "lstm":
+        predictor = layers.LSTM(n,input_shape = init_char.shape)
+    elif model == "simple":
+        predictor = layers.SimpleRNN(n,input_shape = init_char.shape)
+    output = predictor(init_char)
+    print(sample(output,temp)) 
     #write a method that predicts a given number of characters given a certain model and some characters to initialize
 
 
@@ -138,4 +150,5 @@ if __name__=="__main__":
 
     data_division(fname, window_size, stride)
     n=5
-    #char_prediction('c',model,temp,n)
+    char_prediction(np.array(['c']),model,temp,n)
+
