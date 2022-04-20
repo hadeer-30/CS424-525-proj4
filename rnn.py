@@ -7,7 +7,7 @@
 
 from fileinput import filename
 import os
-from pyexpat import model
+#from pyexpat import model
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import argparse
 import pandas as pd
@@ -107,17 +107,25 @@ def data_division (fname, wsize, stride):
 
 
 def char_prediction (init_char, model, temp, n):
-    print ("Method 2")
-    if model == "lstm":
-        predictor = layers.LSTM(n,input_shape = init_char.shape)
-    elif model == "simple":
-        predictor = layers.SimpleRNN(n,input_shape = init_char.shape)
-    output = predictor(init_char)
-    print(sample(output,temp)) 
+    print(model.predict(init_char))
     #write a method that predicts a given number of characters given a certain model and some characters to initialize
 
 
-    
+def model_train(model, y_train,x_train,epochs,lr,decay):
+    #x_train = np.reshape(x_train,(np.newaxis,x_train.shape[0],x_train.shape[1]))
+    #x_train = x_train[:,None]
+    rmodel = Sequential()
+    if model == "lstm":
+        rmodel.add(layers.LSTM(1, input_shape=x_train.shape))
+    elif model == "simple":
+        rmodel.add(layers.SimpleRNN(1, input_shape=x_train.shape))
+    rmodel.add(layers.Dense(1))
+    opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
+    rmodel.compile(loss='mean_squared_error', optimizer=opt)
+    checkpoint = keras.callbacks.ModelCheckpoint("model{epoch:08d}", period=20)
+    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
+    print(rmodel.callbacks)
+    return rmodel
 
 
 
@@ -148,7 +156,9 @@ if __name__=="__main__":
     temp = int(sys.argv[6])
     #print("temp:", temp)
 
-    data_division(fname, window_size, stride)
+    x_train, y_train = data_division(fname, window_size, stride)
     n=5
-    char_prediction(np.array(['c']),model,temp,n)
+    rmodel = model_train(model,y_train,x_train,100,0.5,0)
+    char_prediction(np.array([ord('c')]),rmodel,temp,n)
+    
 
