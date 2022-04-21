@@ -107,19 +107,21 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
     print("x_train shape:", x_train.shape)
     rmodel = Sequential()
     if model == "lstm":
-        rmodel.add(layers.LSTM(1, input_shape=(1, x_train.shape[2])))
+        #rmodel.add(layers.LSTM(100, input_shape=(1, x_train.shape[2])))
+        rmodel.add(layers.LSTM(100, input_shape=(None, x_train.shape[2])))
 
     elif model == "simple":
-        rmodel.add(layers.SimpleRNN(1,stateful=True,batch_size=1, return_sequences=True, input_shape=(None, x_train.shape[2])))
-    rmodel.add(layers.Dense(1))
+        rmodel.add(layers.SimpleRNN(100,stateful=True,batch_size=1, return_sequences=True, input_shape=(None, x_train.shape[2])))
+    rmodel.summary()
+    #rmodel.add(layers.Dense(1))
     print("From training -- vocab_size:", vocab_size)
     rmodel.add(layers.Dense(vocab_size, activation='softmax'))
-    #rmodel.add(layers.Dense(1))
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)
-    checkpoint = keras.callbacks.ModelCheckpoint("model{epoch:08d}", period=20)
-    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
-    print(rmodel.callbacks)
+    #checkpoint = keras.callbacks.ModelCheckpoint("model{epoch:08d}", period=20)
+    # rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
+    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2)
+    # print(rmodel.callbacks)
     return rmodel
 
 
@@ -152,7 +154,15 @@ if __name__=="__main__":
     #print("temp:", temp)
 
     x_train, y_train = data_division(fname, window_size, stride)
+    print("Before training: x_train[0]:", x_train[0])
     n=5
-    rmodel = model_train(model,y_train,x_train,100,0.5,0)
-    char_prediction(np.array([ord('c')]),rmodel,temp,n)
+    rmodel = model_train(model,y_train,x_train,1000,0.001,0)
+    print("x_train shape:", x_train.shape)
+    x_train = np.reshape(x_train,(1,x_train.shape[0],x_train.shape[1],x_train.shape[2]))
+    print("AFTER RESHAPE: x_train shape:", x_train.shape)
+    print("rmodel.predict(x_train[0]):", rmodel.predict(x_train[0]))
+
+    #char_prediction(np.array([ord('c')]),rmodel,temp,n)
+
+
     
