@@ -7,6 +7,7 @@
 
 from fileinput import filename
 import os
+from re import X
 #from pyexpat import model
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import argparse
@@ -16,6 +17,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Model
 from sklearn.metrics import confusion_matrix
 from PIL import Image
@@ -29,8 +31,9 @@ import sklearn.preprocessing as pp
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
 
-
 import sys
+
+vocab_size = 0
 
 # Function for sampling output
 def sample(z, temperature):
@@ -39,37 +42,28 @@ def sample(z, temperature):
   return np.argmax(np.random.multinomial(1, q, 1))
 
 def data_division (fname, wsize, stride):
+    global vocab_size
     print("Method 1: creates the training data to perform back propagation through time.")
     in_data = read_file(fname)
     #encode each character as a number
-    char_to_int = dict((c, i) for i, c in enumerate(set(in_data)))
+    chars = sorted(list(set(in_data)))
+    mapping = dict((c, i) for i, c in enumerate(chars))
+    encoded_line = np.array([mapping[char] for char in in_data])
+    # print("encoded_line shape and data:")
+    # print(encoded_line.shape)
+    # print(encoded_line)
 
-    #char_to_int = (ord(c) for c in (in_data))
-
-
-    #pp ...
-    # le = pp.LabelEncoder()
-    # char_to_int = in_data.apply(le.fit_transform)
-    print( "ch to i:", char_to_int)
-    
-    #encode text to integers
-    data = [char_to_int[char] for char in in_data]
-    print("int_text: ", data)
-
-       
-
-    data_len = len(data)
-    print("data length:", data_len)
-    print("window size:", wsize)
-    print("stride:", stride)
-    #break the data into multiple sequences of length wsize+1, with a moving window of size stride
+    data_len = len(encoded_line)
     data_list = []
     for i in range(0, data_len - wsize, stride):
-        data_list.append(data[i:i+wsize+1])
-        #data_list.append(in_data[i:i+wsize+1])
-    print("data list:", data_list)
-    print("length of data list:", len(data_list))
+        data_list.append(encoded_line[i:i+wsize+1])
+    
+    data_list = np.array(data_list)
+    # print("data list:", data_list)
+    # print("length of data list:", len(data_list))
 
+    
+    #break the data into multiple sequences of length wsize+1, with a moving window of size stride    
     """ divide the data into x and y sequences. x would be the input sequence you are using (of size wsize) and y will be the output sequence (also of size wsize but starting a character later) """
     x_list = []
     y_list = []
@@ -77,33 +71,29 @@ def data_division (fname, wsize, stride):
     for i in range(len(data_list)):
         x_list.append(data_list[i][:-1])
         y_list.append(data_list[i][1:])
-    print("x_list:", x_list)
-    print("y_list:", y_list)
-
-    """ one hot encode the data. That is x and y should each be of size (num of sequences * wsize * vocab size) """
-
-    enc = OneHotEncoder(handle_unknown='ignore')
-    enc.fit(x_list)
-    x_list = enc.transform(x_list).toarray()
-    print("x_list after transform:", x_list)
-    print("x_list shape:", x_list.shape)
-
-    enc.fit(y_list)
-    y_list = enc.transform(y_list).toarray()
-    print("y_list after transform:", y_list)
-    print("y_list shape:", y_list.shape)
-
-    #checking results
-    convert = enc.inverse_transform(y_list)
-    print("y_list after inverse transform:", convert)
     
-    #convert to numpy array
     x_list = np.array(x_list)
     y_list = np.array(y_list)
-    print("x_list shape:", x_list.shape)
-    print("y_list shape:", y_list.shape)
 
-    return x_list, y_list
+    vocab_size = len(mapping)
+    encoded_x = []
+    for x in x_list:
+        print(x)        
+        one_hot_line = to_categorical(x, num_classes=vocab_size)
+        print(one_hot_line.shape)
+        encoded_x.append(one_hot_line)
+    
+    encoded_x = np.array(encoded_x)
+    print("encoded_x shape:", encoded_x.shape)
+        
+    encoded_y = []
+    for y in y_list:
+        one_hot_line = to_categorical(y, num_classes=vocab_size)
+        encoded_y.append(one_hot_line)
+    encoded_y = np.array(encoded_y)
+    print("encoded_y shape:", encoded_y.shape)
+
+    return encoded_x, encoded_y
 
 
 def char_prediction (init_char, model, temp, n):
@@ -114,12 +104,17 @@ def char_prediction (init_char, model, temp, n):
 def model_train(model, y_train,x_train,epochs,lr,decay):
     #x_train = np.reshape(x_train,(np.newaxis,x_train.shape[0],x_train.shape[1]))
     #x_train = x_train[:,None]
+    print("x_train shape:", x_train.shape)
     rmodel = Sequential()
     if model == "lstm":
-        rmodel.add(layers.LSTM(1, input_shape=x_train.shape))
+        rmodel.add(layers.LSTM(1, input_shape=(1, x_train.shape[2])))
+
     elif model == "simple":
-        rmodel.add(layers.SimpleRNN(1, input_shape=x_train.shape))
+        rmodel.add(layers.SimpleRNN(1,stateful=True,batch_size=1, return_sequences=True, input_shape=(None, x_train.shape[2])))
     rmodel.add(layers.Dense(1))
+    print("From training -- vocab_size:", vocab_size)
+    rmodel.add(layers.Dense(vocab_size, activation='softmax'))
+    #rmodel.add(layers.Dense(1))
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)
     checkpoint = keras.callbacks.ModelCheckpoint("model{epoch:08d}", period=20)
@@ -161,4 +156,3 @@ if __name__=="__main__":
     rmodel = model_train(model,y_train,x_train,100,0.5,0)
     char_prediction(np.array([ord('c')]),rmodel,temp,n)
     
-
