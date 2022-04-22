@@ -97,7 +97,7 @@ def data_division (fname, wsize, stride):
 
 
 def char_prediction (init_char, model, temp, n):
-    print(model.predict(init_char))
+    print("WIP")
     #write a method that predicts a given number of characters given a certain model and some characters to initialize
 
 
@@ -111,7 +111,7 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
         rmodel.add(layers.LSTM(100, input_shape=(None, x_train.shape[2])))
 
     elif model == "simple":
-        rmodel.add(layers.SimpleRNN(100,stateful=True,batch_size=1, return_sequences=True, input_shape=(None, x_train.shape[2])))
+        rmodel.add(layers.SimpleRNN(100,return_sequences=True, input_shape=(None, x_train.shape[2])))
     rmodel.summary()
     #rmodel.add(layers.Dense(1))
     print("From training -- vocab_size:", vocab_size)
