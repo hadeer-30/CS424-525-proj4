@@ -18,6 +18,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.utils import to_categorical
+from keras.callbacks import ModelCheckpoint
 from tensorflow.keras.models import Model
 from sklearn.metrics import confusion_matrix
 from PIL import Image
@@ -72,8 +73,8 @@ def data_division (fname, wsize, stride):
         x_list.append(data_list[i][:-1])
         y_list.append(data_list[i][1:])
     
-    x_list = np.array(x_list)
-    y_list = np.array(y_list)
+    # x_list = np.array(x_list)
+    # y_list = np.array(y_list)
 
     vocab_size = len(mapping)
     encoded_x = []
@@ -94,7 +95,16 @@ def data_division (fname, wsize, stride):
     print("encoded_y shape:", encoded_y.shape)
 
     return encoded_x, encoded_y
-
+""" 
+    # reshape X to be [samples, time steps, features]
+    X = np.reshape(x_list, (len(x_list), wsize, 1))
+    # normalize
+    X = X / float(vocab_size)
+    # one hot encode the output variable
+    Y = to_categorical(y_list)
+    
+    return X, Y
+ """
 
 def char_prediction (init_char, model, temp, n):
     print("WIP")
@@ -105,23 +115,46 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
     #x_train = np.reshape(x_train,(np.newaxis,x_train.shape[0],x_train.shape[1]))
     #x_train = x_train[:,None]
     print("x_train shape:", x_train.shape)
+    print("y_train shape:", y_train.shape)
     rmodel = Sequential()
     if model == "lstm":
         #rmodel.add(layers.LSTM(100, input_shape=(1, x_train.shape[2])))
-        rmodel.add(layers.LSTM(100, input_shape=(None, x_train.shape[2])))
+        rmodel.add(layers.LSTM(100, input_shape=(None, x_train.shape[2])))    #working
+
+        #trying different model configurations
+        rmodel.add(layers.Dropout(0.2))
+        rmodel.add(layers.Dense(vocab_size, activation='softmax'))
+        
+        opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
+        rmodel.compile(loss='mean_squared_error', optimizer=opt)    
+        
+        # define the checkpoint
+        filepath="weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
+        checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
+        # fit the model
+        rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
+
+        
+
 
     elif model == "simple":
         rmodel.add(layers.SimpleRNN(100,return_sequences=True, input_shape=(None, x_train.shape[2])))
     rmodel.summary()
     #rmodel.add(layers.Dense(1))
-    print("From training -- vocab_size:", vocab_size)
+    """ print("From training -- vocab_size:", vocab_size)
     rmodel.add(layers.Dense(vocab_size, activation='softmax'))
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)
+    #rmodel.compile(loss='categorical_crossentropy', optimizer='adam')
     #checkpoint = keras.callbacks.ModelCheckpoint("model{epoch:08d}", period=20)
-    # rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
-    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2)
-    # print(rmodel.callbacks)
+    
+    filepath="weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
+    callbacks_list = [checkpoint]
+    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
+    #rmodel.fit(x_train, y_train, epochs=epochs, batch_size=2, callbacks=callbacks_list)
+    #rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2)
+    # print(rmodel.callbacks) """
     return rmodel
 
 
@@ -156,13 +189,19 @@ if __name__=="__main__":
     x_train, y_train = data_division(fname, window_size, stride)
     print("Before training: x_train[0]:", x_train[0])
     n=5
-    rmodel = model_train(model,y_train,x_train,1000,0.001,0)
+    lr = 0.001
+    decay = 0.0
+    rmodel = model_train(model,y_train,x_train,200,lr,decay)
     print("x_train shape:", x_train.shape)
     x_train = np.reshape(x_train,(1,x_train.shape[0],x_train.shape[1],x_train.shape[2]))
     print("AFTER RESHAPE: x_train shape:", x_train.shape)
     print("rmodel.predict(x_train[0]):", rmodel.predict(x_train[0]))
 
+    filename = "weights-improvement-158-0.0630.hdf5"    #the file name of the best weights
+    rmodel.load_weights(filename)
+    opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
+    rmodel.compile(loss='mean_squared_error', optimizer=opt)
+    int_to_char = dict((i, c) for i, c in enumerate(chars))
+    #rmodel.compile(loss='categorical_crossentropy', optimizer='adam')
+
     #char_prediction(np.array([ord('c')]),rmodel,temp,n)
-
-
-    
