@@ -53,7 +53,11 @@ def data_division (fname, wsize, stride):
     # print("encoded_line shape and data:")
     # print(encoded_line.shape)
     # print(encoded_line)
-
+    seq_length = 12
+    init_char = []
+    for i in range(0, len(in_data) - seq_length, 1):
+        seq_in = in_data[i:i + seq_length]
+        init_char.append([mapping[char] for char in seq_in])
     data_len = len(encoded_line)
     data_list = []
     for i in range(0, data_len - wsize, stride):
@@ -94,7 +98,7 @@ def data_division (fname, wsize, stride):
     encoded_y = np.array(encoded_y)
     print("encoded_y shape:", encoded_y.shape)
 
-    return encoded_x, encoded_y
+    return encoded_x, encoded_y,init_char
 """ 
     # reshape X to be [samples, time steps, features]
     X = np.reshape(x_list, (len(x_list), wsize, 1))
@@ -106,8 +110,22 @@ def data_division (fname, wsize, stride):
     return X, Y
  """
 
-def char_prediction (init_char, model, temp, n):
-    print("WIP")
+def char_prediction (init_char, model, temp, n,fname):
+    in_data = read_file(fname)
+    chars = sorted(list(set(in_data)))
+    int_map = dict((i, c) for i, c in enumerate(chars))
+    index = np.random.randint(0, len(init_char)-1)
+    pattern = init_char[index]
+    print("\nPredicted Sequence:")
+    for i in range(n):
+        num = np.reshape(pattern, (1, 1, len(pattern)))
+        num = num / float(len(chars))
+        pred_num = model.predict(num, verbose=0)
+        index = np.argmax(pred_num)
+        new_char = int_map[index]
+        sys.stdout.write(new_char)
+        pattern.append(index)
+        pattern = pattern[1:len(pattern)]
     #write a method that predicts a given number of characters given a certain model and some characters to initialize
 
 
@@ -122,23 +140,21 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
         rmodel.add(layers.LSTM(100, input_shape=(None, x_train.shape[2])))    #working
 
         #trying different model configurations
-        rmodel.add(layers.Dropout(0.2))
-        rmodel.add(layers.Dense(vocab_size, activation='softmax'))
-        
-        opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
-        rmodel.compile(loss='mean_squared_error', optimizer=opt)    
-        
-        # define the checkpoint
-        filepath="weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
-        checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
-        # fit the model
-        rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
-
-        
 
 
     elif model == "simple":
         rmodel.add(layers.SimpleRNN(100,return_sequences=True, input_shape=(None, x_train.shape[2])))
+    rmodel.add(layers.Dropout(0.2))
+    rmodel.add(layers.Dense(vocab_size, activation='softmax'))
+        
+    opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
+    rmodel.compile(loss='mean_squared_error', optimizer=opt)    
+        
+        # define the checkpoint
+    filepath="weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
+        # fit the model
+    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
     rmodel.summary()
     #rmodel.add(layers.Dense(1))
     """ print("From training -- vocab_size:", vocab_size)
@@ -186,22 +202,20 @@ if __name__=="__main__":
     temp = int(sys.argv[6])
     #print("temp:", temp)
 
-    x_train, y_train = data_division(fname, window_size, stride)
+    x_train, y_train,init_char = data_division(fname, window_size, stride)
     print("Before training: x_train[0]:", x_train[0])
-    n=5
+    n=20
     lr = 0.001
     decay = 0.0
     rmodel = model_train(model,y_train,x_train,200,lr,decay)
-    print("x_train shape:", x_train.shape)
+    #print("x_train shape:", x_train.shape)
     x_train = np.reshape(x_train,(1,x_train.shape[0],x_train.shape[1],x_train.shape[2]))
-    print("AFTER RESHAPE: x_train shape:", x_train.shape)
-    print("rmodel.predict(x_train[0]):", rmodel.predict(x_train[0]))
-
-    filename = "weights-improvement-158-0.0630.hdf5"    #the file name of the best weights
-    rmodel.load_weights(filename)
+    #print("AFTER RESHAPE: x_train shape:", x_train.shape)
+    #print("rmodel.predict(x_train[0]):", rmodel.predict(x_train[0]))
+    filepath = "weights-improvement-173-0.0630.hdf5"    #the file name of the best weights
+    rmodel.load_weights(filepath)
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)
-    int_to_char = dict((i, c) for i, c in enumerate(chars))
     #rmodel.compile(loss='categorical_crossentropy', optimizer='adam')
 
-    #char_prediction(np.array([ord('c')]),rmodel,temp,n)
+    char_prediction(init_char,rmodel,temp,n,fname)
