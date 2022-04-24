@@ -36,11 +36,11 @@ import sys
 
 vocab_size = 0
 
-# Function for sampling output
-def sample(z, temperature):
+# Function for applying temp to output
+def apply_temp(z, temperature):
   z = np.array(z)**(1/temperature)
   q = z/z.sum()
-  return np.argmax(np.random.multinomial(1, q, 1))
+  return np.argmax(q)
 
 def data_division (fname, wsize, stride):
     global vocab_size
@@ -56,16 +56,6 @@ def data_division (fname, wsize, stride):
     print("encoded_line shape and data:")
     print(encoded_line.shape)
     print(encoded_line)
-
-
-    seq_length = 12
-    init_char = []
-    for i in range(0, len(in_data) - seq_length, 1):
-        seq_in = in_data[i:i + seq_length]
-        init_char.append([mapping[char] for char in seq_in])
-    print("init_char shape and data:")
-    print(init_char)
-    print(len(init_char))
 
     data_len = len(encoded_line)
     data_list = []
@@ -108,7 +98,7 @@ def data_division (fname, wsize, stride):
     encoded_y = np.array(encoded_y)
     print("encoded_y shape:", encoded_y.shape)
 
-    init_char = encoded_x[0]
+    init_char = encoded_x[0][0]
 
     return encoded_x, encoded_y,init_char
 """ 
@@ -134,21 +124,16 @@ def char_prediction (init_char, model, temp, n,fname):
     in_data = read_file(fname)
     chars = sorted(list(set(in_data)))
     int_map = dict((i, c) for i, c in enumerate(chars))
-    index = np.random.randint(0, len(init_char)-1)
-    pattern = init_char[index]
-    print("pattern:", pattern)
     pred_seq=""
-    print("\nPredicted Sequence:")
+    print("Predication Start")
     for i in range(n):
-        num = np.reshape(pattern, (1, 1, len(pattern)))
-        num = num / float(len(chars))
-        pred_num = model.predict(num, verbose=0)
-        index = np.argmax(pred_num)
-        new_char = int_map[index]
+        init_char = np.reshape(init_char, (1, 1, len(init_char)))
+        pred_num = model.predict(init_char, verbose=0)
+        char_index = apply_temp(pred_num,temp)
+        new_char = int_map[char_index]
         pred_seq = pred_seq + new_char
-        sys.stdout.write(new_char)
-        pattern.append(index)
-        pattern = pattern[1:len(pattern)]
+        init_char = np.append(init_char,char_index)
+        init_char = init_char[1:]
     print("\n")
     print("Predicted Sequence (string):", pred_seq)
     print("seq length:", len(pred_seq))
