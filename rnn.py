@@ -5,6 +5,7 @@
 
 """
 
+
 from fileinput import filename
 import os
 from re import X
@@ -98,7 +99,7 @@ def data_division (fname, wsize, stride):
     encoded_y = np.array(encoded_y)
     print("encoded_y shape:", encoded_y.shape)
 
-    init_char = encoded_x[0][0]
+    init_char = np.random.randint(0,vocab_size,vocab_size)
 
     return encoded_x, encoded_y,init_char
 """ 
@@ -113,7 +114,6 @@ def data_division (fname, wsize, stride):
  """
 
 def char_prediction (init_char, model, temp, n,fname):
-    print('init_chars: ',init_char)
     init_char = init_char.tolist()
 
     """chars = sorted(list(set(init_char)))
@@ -128,12 +128,14 @@ def char_prediction (init_char, model, temp, n,fname):
     print("Predication Start")
     for i in range(n):
         init_char = np.reshape(init_char, (1, 1, len(init_char)))
+        # Predicting next character
         pred_num = model.predict(init_char, verbose=0)
         char_index = apply_temp(pred_num,temp)
         new_char = int_map[char_index]
         pred_seq = pred_seq + new_char
+        # Progress the sequence
+        init_char = np.delete(init_char,0)
         init_char = np.append(init_char,char_index)
-        init_char = init_char[1:]
     print("\n")
     print("Predicted Sequence (string):", pred_seq)
     print("seq length:", len(pred_seq))
@@ -141,7 +143,7 @@ def char_prediction (init_char, model, temp, n,fname):
     #write a method that predicts a given number of characters given a certain model and some characters to initialize
 
 
-def model_train(model, y_train,x_train,epochs,lr,decay):
+def model_train(model, y_train,x_train,epochs,lr,decay,hidden_state):
     #x_train = np.reshape(x_train,(np.newaxis,x_train.shape[0],x_train.shape[1]))
     #x_train = x_train[:,None]
     print("x_train shape:", x_train.shape)
@@ -149,13 +151,13 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
     rmodel = Sequential()
     if model == "lstm":
         #rmodel.add(layers.LSTM(100, input_shape=(1, x_train.shape[2])))
-        rmodel.add(layers.LSTM(100, input_shape=(None, x_train.shape[2])))    #working
+        rmodel.add(layers.LSTM(hidden_state, input_shape=(None, x_train.shape[2])))    #working
 
         #trying different model configurations
 
 
     elif model == "simple":
-        rmodel.add(layers.SimpleRNN(100,return_sequences=True, input_shape=(None, x_train.shape[2])))
+        rmodel.add(layers.SimpleRNN(hidden_state,return_sequences=True, input_shape=(None, x_train.shape[2])))
     rmodel.add(layers.Dropout(0.2))
     rmodel.add(layers.Dense(vocab_size, activation='softmax'))
         
@@ -164,12 +166,12 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
         
         # define the checkpoint
     #filepath="weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
-    filepath="weights.hdf5"
+    filepath="weights/weights{epoch:03d}.hdf5"
     #checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
-    checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=0, save_best_only=True, mode='min')
+    checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=0, mode='min',save_freq = 5)
         # fit the model
     #rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
-    rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=0,callbacks=[checkpoint])
+    history = rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
     rmodel.summary()
     #rmodel.add(layers.Dense(1))
     """ print("From training -- vocab_size:", vocab_size)
@@ -186,7 +188,7 @@ def model_train(model, y_train,x_train,epochs,lr,decay):
     #rmodel.fit(x_train, y_train, epochs=epochs, batch_size=2, callbacks=callbacks_list)
     #rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2)
     # print(rmodel.callbacks) """
-    return rmodel
+    return rmodel,history
 
 
 
@@ -222,17 +224,34 @@ if __name__=="__main__":
     n=20
     lr = 0.001
     decay = 0.0
-    rmodel = model_train(model,y_train,x_train,200,lr,decay)
-    #print("x_train shape:", x_train.shape)
+    name = model + str(hidden_state) + str(window_size) + str(stride) + str(temp)
+    rmodel,history = model_train(model,y_train,x_train,20,lr,decay,hidden_state)
+    plt.plot(history.history["loss"])
+    plt.title("Loss for " + name)
+    plt.ylabel("Loss")
+    plt.xlabel("Epoch")
+    plt.savefig(name + ".png")
+    plt.clf()
     x_train = np.reshape(x_train,(1,x_train.shape[0],x_train.shape[1],x_train.shape[2]))
-    #print("AFTER RESHAPE: x_train shape:", x_train.shape)
-    #print("rmodel.predict(x_train[0]):", rmodel.predict(x_train[0]))
     
-    #filepath = "weights-improvement-200-0.0001.hdf5"    #the file name of the best weights
-    filepath = "weights.hdf5"    #the file name of the best weights
+    # Printing predictions every certain number of epochs to see output
+    filepath = "weights/weights{epoch:03d}.hdf5"
+    filepaths = [filepath.format(epoch = x) for x in np.arange(1,21,5)]
+    for filepath in filepaths:
+        rmodel.load_weights(filepath)
+        opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
+        rmodel.compile(loss='mean_squared_error', optimizer=opt)
+        char_prediction(init_char,rmodel,temp,n,fname)
+
+    # Printing for last epoch
+    filepath = "weights/weights020.hdf5"    #the file name of the best weights
     rmodel.load_weights(filepath)
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)
-    #rmodel.compile(loss='categorical_crossentropy', optimizer='adam')
 
-    char_prediction(init_char,rmodel,temp,n,fname)
+    pred_seq = char_prediction(init_char,rmodel,temp,n,fname)
+    
+    f = open(name + ".txt", "w")
+    f.write(pred_seq)
+    f.close()
+    
