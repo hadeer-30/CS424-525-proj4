@@ -21,18 +21,11 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.utils import to_categorical
 from keras.callbacks import ModelCheckpoint
 from tensorflow.keras.models import Model
-from sklearn.metrics import confusion_matrix
 from PIL import Image
 import glob
 
-from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
-import sklearn.preprocessing as pp
-
-
-from sklearn.preprocessing import OneHotEncoder
 import numpy as np
-
 import sys
 
 vocab_size = 0
@@ -45,14 +38,16 @@ def apply_temp(z, temperature):
 
 def data_division (fname, wsize, stride):
     global vocab_size
+    global mapping
+    global int_map
     print("Method 1: creates the training data to perform back propagation through time.")
     in_data = read_file(fname)
     #encode each character as a number
     chars = sorted(list(set(in_data)))
     mapping = dict((c, i) for i, c in enumerate(chars))
+    int_map = dict((i, c) for i, c in enumerate(chars))
     
     encoded_line = np.array([mapping[char] for char in in_data])
-    #encoded_line = in_data
 
     print("encoded_line shape and data:")
     print(encoded_line.shape)
@@ -64,10 +59,7 @@ def data_division (fname, wsize, stride):
         data_list.append(encoded_line[i:i+wsize+1])
     
     data_list = np.array(data_list)
-    # print("data list:", data_list)
-    # print("length of data list:", len(data_list))
-
-    
+ 
     #break the data into multiple sequences of length wsize+1, with a moving window of size stride    
     """ divide the data into x and y sequences. x would be the input sequence you are using (of size wsize) and y will be the output sequence (also of size wsize but starting a character later) """
     x_list = []
@@ -76,9 +68,6 @@ def data_division (fname, wsize, stride):
     for i in range(len(data_list)):
         x_list.append(data_list[i][:-1])
         y_list.append(data_list[i][1:])
-    
-    # x_list = np.array(x_list)
-    # y_list = np.array(y_list)
 
     vocab_size = len(mapping)
     print("vocab_size:", vocab_size)
@@ -99,9 +88,16 @@ def data_division (fname, wsize, stride):
     encoded_y = np.array(encoded_y)
     print("encoded_y shape:", encoded_y.shape)
 
-    init_char = np.random.randint(0,vocab_size,vocab_size)
+    #init_chars = np.random.randint(0,vocab_size,vocab_size)
+    
+    # pick a random seed
+    start = np.random.randint(0, len(x_list)-1)
+    init_chars = x_list[start]
+    print ("Seed:")
+    print ("\"", ''.join([int_map[value] for value in init_chars]), "\"")
 
-    return encoded_x, encoded_y,init_char
+
+    return encoded_x, encoded_y,init_chars
 """ 
     # reshape X to be [samples, time steps, features]
     X = np.reshape(x_list, (len(x_list), wsize, 1))
@@ -113,29 +109,42 @@ def data_division (fname, wsize, stride):
     return X, Y
  """
 
-def char_prediction (init_char, model, temp, n,fname):
-    init_char = init_char.tolist()
+def char_prediction (init_chars, model, temp, n,fname):
+    
+    print("prediction method:")
+    
+    pred_seq = ""
+    # generate characters
+    for i in range(n):
+        x = to_categorical(init_chars, num_classes=vocab_size)
+        #print("x shape in prediction:", x.shape)
+        
+        #x = np.reshape(x, (1,len(init_chars), vocab_size))
+        x = np.reshape(x, (1,len(init_chars), vocab_size))
+        pred_num = model.predict(x, verbose=0)               
+        #print("pred_num:", pred_num)
+        char_index = apply_temp(pred_num,temp)
+        new_char = int_map[char_index]
+        pred_seq = pred_seq + new_char
+        init_chars = np.delete(init_chars,0)
+        init_chars = np.append(init_chars,char_index)
+    print ("\nDone.")
 
-    """chars = sorted(list(set(init_char)))
-    mapping = dict((c, i) for i, c in enumerate(chars))    
-    encoded_line = np.array([mapping[char] for char in init_char])
-    """
-
-    in_data = read_file(fname)
+    """ in_data = read_file(fname)
     chars = sorted(list(set(in_data)))
-    int_map = dict((i, c) for i, c in enumerate(chars))
     pred_seq=""
     print("Predication Start")
     for i in range(n):
-        init_char = np.reshape(init_char, (1, 1, len(init_char)))
+        init_chars = np.reshape(init_chars, (1, 1, len(init_chars)))
         # Predicting next character
-        pred_num = model.predict(init_char, verbose=0)
+        pred_num = model.predict(init_chars, verbose=0)
         char_index = apply_temp(pred_num,temp)
         new_char = int_map[char_index]
         pred_seq = pred_seq + new_char
         # Progress the sequence
-        init_char = np.delete(init_char,0)
-        init_char = np.append(init_char,char_index)
+        init_chars = np.delete(init_chars,0)
+        init_chars = np.append(init_chars,char_index) """
+
     print("\n")
     print("Predicted Sequence (string):", pred_seq)
     print("seq length:", len(pred_seq))
@@ -144,17 +153,12 @@ def char_prediction (init_char, model, temp, n,fname):
 
 
 def model_train(model, y_train,x_train,epochs,lr,decay,hidden_state):
-    #x_train = np.reshape(x_train,(np.newaxis,x_train.shape[0],x_train.shape[1]))
-    #x_train = x_train[:,None]
     print("x_train shape:", x_train.shape)
     print("y_train shape:", y_train.shape)
     rmodel = Sequential()
     if model == "lstm":
         #rmodel.add(layers.LSTM(100, input_shape=(1, x_train.shape[2])))
         rmodel.add(layers.LSTM(hidden_state, input_shape=(None, x_train.shape[2])))    #working
-
-        #trying different model configurations
-
 
     elif model == "simple":
         rmodel.add(layers.SimpleRNN(hidden_state,return_sequences=True, input_shape=(None, x_train.shape[2])))
@@ -164,12 +168,11 @@ def model_train(model, y_train,x_train,epochs,lr,decay,hidden_state):
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)    
         
-        # define the checkpoint
-    #filepath="weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
+    # define the checkpoint
     filepath="weights/weights{epoch:03d}.hdf5"
     #checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
     checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=0, mode='min',save_freq = 5)
-        # fit the model
+    # fit the model
     #rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
     history = rmodel.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=2,callbacks=[checkpoint])
     rmodel.summary()
@@ -219,13 +222,14 @@ if __name__=="__main__":
     temp = int(sys.argv[6])
     #print("temp:", temp)
 
-    x_train, y_train,init_char = data_division(fname, window_size, stride)
+    x_train, y_train,init_chars = data_division(fname, window_size, stride)
     print("Before training: x_train[0]:", x_train[0])
     n=20
-    lr = 0.001
-    decay = 0.0
+    lr = 0.5
+    decay = 0.1
+    epochs = 2
     name = model + str(hidden_state) + str(window_size) + str(stride) + str(temp)
-    rmodel,history = model_train(model,y_train,x_train,20,lr,decay,hidden_state)
+    rmodel,history = model_train(model,y_train,x_train,epochs,lr,decay,hidden_state)
     plt.plot(history.history["loss"])
     plt.title("Loss for " + name)
     plt.ylabel("Loss")
@@ -236,20 +240,23 @@ if __name__=="__main__":
     
     # Printing predictions every certain number of epochs to see output
     filepath = "weights/weights{epoch:03d}.hdf5"
-    filepaths = [filepath.format(epoch = x) for x in np.arange(1,21,5)]
-    for filepath in filepaths:
-        rmodel.load_weights(filepath)
-        opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
-        rmodel.compile(loss='mean_squared_error', optimizer=opt)
-        char_prediction(init_char,rmodel,temp,n,fname)
+    if (epochs >= 5):
+        filepaths = [filepath.format(epoch = x) for x in np.arange(5,epochs,5)]
+        for filepath in filepaths:
+            rmodel.load_weights(filepath)
+            opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
+            rmodel.compile(loss='mean_squared_error', optimizer=opt)
+            char_prediction(init_chars,rmodel,temp,n,fname)
 
     # Printing for last epoch
-    filepath = "weights/weights020.hdf5"    #the file name of the best weights
+    filepath = "weights/weights{epoch:03d}.hdf5"    #the file name of the best weights
+    filepath = filepath.format(epoch = epochs)
+    print("filepath:", filepath)
     rmodel.load_weights(filepath)
     opt = keras.optimizers.Adam(learning_rate=lr,decay=decay)
     rmodel.compile(loss='mean_squared_error', optimizer=opt)
 
-    pred_seq = char_prediction(init_char,rmodel,temp,n,fname)
+    pred_seq = char_prediction(init_chars,rmodel,temp,n,fname)
     
     f = open(name + ".txt", "w")
     f.write(pred_seq)
